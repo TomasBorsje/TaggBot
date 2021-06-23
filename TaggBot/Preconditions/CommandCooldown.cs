@@ -31,7 +31,7 @@ namespace TaggBot.Preconditions
             }
             else
             {
-                return Task.FromResult(PreconditionResult.FromError("You're using that command too fast! Please wait " + string.Format("{0:0.00}", _cooldown - DateTime.UtcNow.Subtract(PublicModule.globalCommandCooldown[command.Name].ToUniversalTime()).TotalSeconds) + " second(s)."));
+                return Task.FromResult(PreconditionResult.FromError("You're using that command too fast! Please wait " + string.Format("{0:0.00}", _cooldown - DateTime.UtcNow.Subtract(globalCommandCooldown[command.Name].ToUniversalTime()).TotalSeconds) + " second(s)."));
             }
         }
     }
