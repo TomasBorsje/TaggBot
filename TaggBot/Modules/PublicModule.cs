@@ -10,25 +10,34 @@ using System.Collections.Generic;
 using TaggBot.Preconditions;
 using Discord.WebSocket;
 using System.Net;
+using YoutubeExplode;
+using YoutubeExplode.Videos;
+using YoutubeExplode.Videos.Streams;
+using Xabe.FFmpeg;
+using Microsoft.WindowsAPICodePack.Shell;
+using Microsoft.WindowsAPICodePack.Shell.PropertySystem;
 
 namespace TaggBot.Modules
 {
+
     public class PublicModule : ModuleBase<SocketCommandContext>
     {
 
         public SpotifyClientService SpotifyClientService { get; set; }
+        public YoutubeClientService YoutubeClientService { get; set; }
         public DiscordSocketClient DiscordClientService { get; set; }
-      
+        public FFMPEGService FFMPEGService { get; set; }
+
         JsonSerializerSettings jsonSettings = new JsonSerializerSettings
         {
             PreserveReferencesHandling = PreserveReferencesHandling.Objects
         };
 
-        /// <summary>
-        /// Test command that makes the bot reply "pong!".
-        /// </summary>
-        /// <returns></returns>
-        [Command("ping")]
+    /// <summary>
+    /// Test command that makes the bot reply "pong!".
+    /// </summary>
+    /// <returns></returns>
+    [Command("ping")]
         [CommandCooldown(10)]
         public Task PingAsync()
             => ReplyAsync("pong!");
@@ -58,6 +67,60 @@ namespace TaggBot.Modules
                 x.Nickname = user.Nickname == null ? user.Username : user.Nickname;
             });
             await ReplyAsync(message);
+        }
+
+        /// <summary>
+        /// replaces the audio of the attached video with the audio
+        /// of a youtube video id (youtube.com/watch?v=________)
+        /// with the audio starting at the supplied start time.
+        /// </summary>
+        /// <param name="videoId">Youtube video id of the audio to use</param>
+        /// <param name="audioStart">Time at which to start the audio</param>
+        /// <returns></returns>
+        [Command("music")]
+        public async Task Music(string videoId, float audioStart)
+        {
+            string input = "";
+            string attachmentUrl = "";
+            if(Context.Message.Attachments.Count != 1)
+            {
+                await ReplyAsync("Please attach 1 video to your message.");
+                return;
+            }
+            foreach (Attachment a in Context.Message.Attachments) // Easy way to grab elements from a Collection
+            {
+                input = $@"D:\TaggBot\video\base\{a.Filename}";
+                attachmentUrl = a.Url;
+            }
+            // Delete remaining videos from previous operations
+            File.Delete(@"D:\TaggBot\trim.mp4");
+            File.Delete($@"D:\TaggBot\{videoId}.mp4");
+            if (File.Exists(input)) { File.Delete(input); }
+            
+            using (WebClient client = new WebClient()) // Download base video
+            {
+                client.DownloadFile(new Uri(attachmentUrl), input);
+                Console.WriteLine("Downloaded file from " + attachmentUrl);
+            }
+
+            ShellFile so = ShellFile.FromFilePath(input); // Open file to read duration data
+            double nanoseconds;
+            double.TryParse(so.Properties.System.Media.Duration.Value.ToString(),
+            out nanoseconds);
+            //Console.WriteLine("Duration (seconds):" + nanoseconds/10000000);
+
+            var manifest = await YoutubeClientService.GetClient().Videos.Streams.GetManifestAsync(videoId); // Get video manifest
+            var streamInfo = manifest.GetAudioOnlyStreams().GetWithHighestBitrate(); // Get video info
+            await YoutubeClientService.GetClient().Videos.Streams.DownloadAsync(streamInfo, $@"D:\TaggBot\video\{videoId}.{streamInfo.Container}"); // Dowmload the video
+
+            // Trim the audio to fit input duration
+            var trimAudio = await FFmpeg.Conversions.FromSnippet.Split($@"D:\TaggBot\video\{videoId}.{streamInfo.Container}", $@"D:\TaggBot\trim.mp4", TimeSpan.FromSeconds(audioStart), TimeSpan.FromSeconds(nanoseconds / 10000000));
+            await trimAudio.Start();
+            // Merge audio and video
+            var conversion = await FFmpeg.Conversions.FromSnippet.AddAudio(input, $@"D:\TaggBot\trim.mp4", $@"D:\TaggBot\{videoId}.mp4");
+            await conversion.Start();
+            // Send created video
+            await Context.Channel.SendFileAsync($@"D:\TaggBot\{videoId}.mp4");
         }
 
         /// <summary>
