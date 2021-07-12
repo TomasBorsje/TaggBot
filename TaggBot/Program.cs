@@ -11,6 +11,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using TaggBot.Services;
+using Xabe.FFmpeg;
 
 namespace TaggBot
 {
@@ -18,7 +19,8 @@ namespace TaggBot
     {
         static void Main(string[] args)
         {
-             new Program().MainAsync().GetAwaiter().GetResult();
+            FFmpeg.SetExecutablesPath(@"D:\TaggBot\ffmpeg\bin", "FFmpeg");
+            new Program().MainAsync().GetAwaiter().GetResult();
         }
         public async Task MainAsync()
         {
@@ -58,6 +60,8 @@ namespace TaggBot
                 .AddSingleton<CommandHandlingService>()
                 .AddSingleton<HttpClient>()
                 .AddSingleton<SpotifyClientService>()
+                .AddSingleton<FFMPEGService>()
+                .AddSingleton<YoutubeClientService>()
                 .BuildServiceProvider();
         }
     }
