@@ -16,6 +16,7 @@ using YoutubeExplode.Videos.Streams;
 using Xabe.FFmpeg;
 using Microsoft.WindowsAPICodePack.Shell;
 using Microsoft.WindowsAPICodePack.Shell.PropertySystem;
+using System.Drawing;
 
 namespace TaggBot.Modules
 {
@@ -33,14 +34,14 @@ namespace TaggBot.Modules
             PreserveReferencesHandling = PreserveReferencesHandling.Objects
         };
 
-    /// <summary>
-    /// Test command that makes the bot reply "pong!".
-    /// </summary>
-    /// <returns></returns>
-    [Command("ping")]
+        /// <summary>
+        /// Test command that makes the bot reply "pong!".
+        /// </summary>
+        /// <returns></returns>
+        [Command("ping")]
         [CommandCooldown(10)]
         public Task PingAsync()
-            => ReplyAsync("pong!");
+                => ReplyAsync("pong!");
 
         /// <summary>
         /// Copies a user's avatar and nickname and assigns it to the bot.
@@ -48,7 +49,6 @@ namespace TaggBot.Modules
         /// <param name="user"></param>
         /// <param name="message"></param>
         /// <returns></returns>
-
         // TODO: Check Discord API rate limits on avatar changes and set command cooldown appropriately.
         [Command("clone")]
         [CommandCooldown(60)]
@@ -67,6 +67,53 @@ namespace TaggBot.Modules
                 x.Nickname = user.Nickname == null ? user.Username : user.Nickname;
             });
             await ReplyAsync(message);
+        }
+
+        /// <summary>
+        /// Places a speech bubble over the first image sent in the last 10 messages.
+        /// Only works on .jpg and .png files.
+        /// </summary>
+        /// <returns></returns>
+        [Command("speech")]
+        public async Task Speech()
+        {
+            IAsyncEnumerable<IMessage> msgs = AsyncEnumerableExtensions.Flatten(Context.Channel.GetMessagesAsync(limit: 10));
+            var iter = msgs.GetAsyncEnumerator();
+            string filename = null;
+            string url = null;
+            while (await iter.MoveNextAsync())
+            {
+                if (iter.Current.Attachments.Count == 1)
+                {
+                    foreach(Attachment attachment in iter.Current.Attachments) {
+                        filename = attachment.Filename;
+                        url = attachment.Url;
+                    }
+                    break;
+                }
+            }
+            if (filename == null || url == null || !(filename.EndsWith(".png") || filename.EndsWith(".jpg")))
+            {
+                await ReplyAsync("No image detected in the past 10 messages.");
+                return;
+            }
+            using (Bitmap b = new Bitmap(@"D:\TaggBot\speech_base.png"))
+            {
+                using (Graphics g = Graphics.FromImage(b))
+                {
+                    using (WebClient client = new WebClient()) // Download base video
+                    {
+                        Console.WriteLine("Downloading from:" + url);
+                        client.DownloadFile(new Uri(url), @"D:\TaggBot\speech_overlay.png");
+                    }
+                    using(System.Drawing.Image overlay = System.Drawing.Image.FromFile(@"D:\TaggBot\speech_overlay.png"))
+                    {
+                        g.DrawImage(overlay, 0, 84, 492, 441);
+                    }
+                }
+                b.Save(@"D:\TaggBot\speech.png", System.Drawing.Imaging.ImageFormat.Png);
+            }
+            await Context.Channel.SendFileAsync(@"D:\TaggBot\speech.png");
         }
 
         /// <summary>
@@ -156,7 +203,7 @@ namespace TaggBot.Modules
                 EmbedBuilder builder = new EmbedBuilder(); // Begin building the embed to send
                 builder.ThumbnailUrl = fullTrack.Album.Images[0].Url; // Set thumbnail to the album's image
                 builder.Title = fullTrack.Artists[0].Name + " - " + fullTrack.Name; // Set title to artist - song name
-                builder.Color = new Color(30, 215, 96); // Spotify's brand colour
+                builder.Color = new Discord.Color(30, 215, 96); // Spotify's brand colour
                 builder.Description = "From: " + fullTrack.Album.Name; // Put album in the embed description
                 // Add audio feature info
                 builder.AddField("Danceability", Math.Round(trackAudioFeatures.Danceability * 100, 1) + "%", true);
